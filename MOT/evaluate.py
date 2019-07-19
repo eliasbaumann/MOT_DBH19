@@ -55,7 +55,7 @@ class YoloTest(object):
         org_image = np.copy(image)
         org_h, org_w, _ = org_image.shape
 
-        image_data = utils.image_preporcess(image, [self.input_size, self.input_size])
+        image_data = utils.image_preprocess(image, [self.input_size, self.input_size])
         image_data = image_data[np.newaxis, ...]
 
         pred_sbbox, pred_mbbox, pred_lbbox = self.sess.run(
