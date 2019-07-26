@@ -40,6 +40,7 @@ def load_images(data_dir,resize=None,seq_len=None):
     res_imgs = []
     for img in img_list:
         nimg = cv_resize_pad(img,resize)
+        # More augmentation 
         res_imgs.append(nimg)
 
     images = np.array(res_imgs)
@@ -86,10 +87,14 @@ if __name__ == '__main__':
     test_dir = data_dir +'test/'
     train_imgs,train_labels = load_images(train_dir)
     test_imgs,test_labels = load_images(test_dir,resize=train_imgs.shape[2],seq_len=train_imgs.shape[1])
-
     train_dataset = tf.data.Dataset.from_tensor_slices((train_imgs,train_labels))
     test_dataset = tf.data.Dataset.from_tensor_slices((test_imgs,test_labels))
     
+    saver = tf.train.Saver()
+
+    # save_path = saver.save(sess, "path.ckpt")
+    # saver.restore(sess, "path.ckpt")
+
     print("done")
     
     
