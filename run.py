@@ -6,7 +6,7 @@ import cv2
 from mpi4py import MPI
 
 from model import feature_extractor
-from utils import sparse_cost_sensitive_loss,onehot
+from utils import sparse_cost_sensitive_loss,onehot,weighted_ce
 
 # from feature_extractor import Feature_extractor
 
@@ -78,11 +78,6 @@ def generate_seqs(images,data_desc,onehot_lab=True):
 
 
 
-    
-
-
-
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -96,19 +91,23 @@ if __name__ == '__main__':
     test_imgs,test_labels = load_images(test_dir,resize=train_imgs.shape[2],seq_len=train_imgs.shape[1])
     train_dataset = tf.data.Dataset.from_tensor_slices((train_imgs,train_labels))
     test_dataset = tf.data.Dataset.from_tensor_slices((test_imgs,test_labels))
-    n_epochs = 50
+    n_epochs = 4
     batchsize = 50
     n_samples = train_imgs.shape[0]
     
     train_dataset = train_dataset.shuffle(buffer_size=100,reshuffle_each_iteration=True).batch(batchsize).repeat()
+    test_dataset = test_dataset.shuffle(buffer_size=100,reshuffle_each_iteration=True).batch(batchsize)
 
-    iterator = train_dataset.make_initializable_iterator()
-    
+    iterator = tf.data.Iterator.from_structure(train_dataset.output_types,train_dataset.output_shapes)
     next_element = iterator.get_next()
 
-    ft_extr = feature_extractor(next_element[0])
-    model = ft_extr.create_lstm_model()
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=model,labels=next_element[1]))
+    train_iterator = iterator.make_initializer(train_dataset)
+    test_iterator = iterator.make_initializer(test_dataset)
+
+    ft_extr = feature_extractor()
+    model = ft_extr.create_lstm_model(next_element[0])
+    #loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=model,labels=next_element[1]))
+    loss = weighted_ce(next_element[1],model,.1)
     #loss = sparse_cost_sensitive_loss(model,next_element[1],[[1.,1.],[1.,1.]]) #TODO label to onehot
     prediction = tf.nn.softmax(model)
     equality = tf.equal(tf.to_float(tf.argmax(prediction,1)), tf.to_float(tf.argmax(next_element[1], 1)))    
@@ -121,14 +120,14 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        sess.run(iterator.initializer)
+        sess.run(train_iterator)
         saver = tf.train.Saver()
 
         for epoch in range(n_epochs):
             ep_loss = []
             ep_acc = []
             for _ in range(int(n_samples/batchsize)):
-                _,b_loss,acc = sess.run([optimizer,loss,accuracy])
+                _,b_loss,acc = sess.run([optimizer,loss,accuracy],feed_dict={'is_training:0':True})
                 ep_loss.append(b_loss)
                 ep_acc.append(acc)
 
@@ -137,7 +136,18 @@ if __name__ == '__main__':
             if(n_epochs%5==0):
                 save_path = saver.save(sess,data_dir+str(epoch)+"_checkpoint.ckpt")
     
+        print('predicting..')
+        save_path = saver.save(sess,data_dir+"final_checkpoint.ckpt")
+        sess.run(test_iterator)
+        result_set = []
+        try:
+            while True:
+                pred = sess.run(prediction,feed_dict={'is_training:0':False})
+                result_set.append(pred)
+            
 
+        except:
+            pass
         # range
         # sess.run(optimizer,cost)
     # training is false and true sometimes
@@ -145,6 +155,7 @@ if __name__ == '__main__':
     # save_path = saver.save(sess, "path.ckpt")
     # saver.restore(sess, "path.ckpt")
 
+    result_set = np.squeeze(np.array(result_set))
     print("done")
     
     
