@@ -8,6 +8,10 @@ from mpi4py import MPI
 from model import feature_extractor
 from utils import sparse_cost_sensitive_loss,onehot,weighted_ce
 
+
+from keras.applications.mobilenet_v2 import MobileNetV2
+from keras.applications.imagenet_utils import preprocess_input
+
 # from feature_extractor import Feature_extractor
 
 
@@ -76,6 +80,9 @@ def generate_seqs(images,data_desc,onehot_lab=True):
         labels = onehot(labels,label_dict={'boat':1,'nature':0})
     return img_seqs,labels
 
+def fourier_transform(data):
+    fft_data = np.fft.rfftn(data,axes=(1,2,3))
+    return fft_data
 
 
 if __name__ == '__main__':
@@ -87,11 +94,40 @@ if __name__ == '__main__':
     data_dir = args.__dict__['dir']
     train_dir = data_dir +'train/'
     test_dir = data_dir +'test/'
-    train_imgs,train_labels = load_images(train_dir)
+    train_imgs,train_labels = load_images(train_dir,resize=96,seq_len=5)
     test_imgs,test_labels = load_images(test_dir,resize=train_imgs.shape[2],seq_len=train_imgs.shape[1])
-    train_dataset = tf.data.Dataset.from_tensor_slices((train_imgs,train_labels))
-    test_dataset = tf.data.Dataset.from_tensor_slices((test_imgs,test_labels))
-    n_epochs = 4
+    # additional_train_imgs = np.repeat(train_imgs[:122,:],4,axis=0)
+    # additional_train_labels = np.repeat(train_labels[:122,:],4,axis=0)
+
+    # train_imgs = np.concatenate((train_imgs,additional_train_imgs),axis=0)
+    # train_labels = np.concatenate((train_labels,additional_train_labels),axis=0)
+
+    # Fourier transform
+    fft_train = fourier_transform(train_imgs)
+    # PCA??
+
+    # Random cnn features
+
+    # Sift
+
+
+    resnet = MobileNetV2(weights='imagenet',pooling = max, include_top = False,input_shape=train_imgs.shape[2:])
+    
+    reshaped_imgs = np.reshape(train_imgs,(-1,)+train_imgs.shape[2:])
+    reshaped_t_imgs = np.reshape(test_imgs,(-1,)+train_imgs.shape[2:])
+
+    train_imgs_pp = preprocess_input(reshaped_imgs)
+    test_imgs_pp = preprocess_input(reshaped_t_imgs)
+    
+    train_imgs_feat = resnet.predict(train_imgs_pp)
+    test_imgs_feat = resnet.predict(test_imgs_pp)
+    
+    train_imgs_feat = np.reshape(train_imgs_feat,(train_imgs.shape[:2]+train_imgs_feat.shape[1:]))
+    test_imgs_feat = np.reshape(test_imgs_feat,(test_imgs.shape[:2]+test_imgs_feat.shape[1:]))
+
+    train_dataset = tf.data.Dataset.from_tensor_slices((train_imgs_feat,train_labels))
+    test_dataset = tf.data.Dataset.from_tensor_slices((test_imgs_feat,test_labels))
+    n_epochs = 200
     batchsize = 50
     n_samples = train_imgs.shape[0]
     
@@ -105,17 +141,26 @@ if __name__ == '__main__':
     test_iterator = iterator.make_initializer(test_dataset)
 
     ft_extr = feature_extractor()
-    model = ft_extr.create_lstm_model(next_element[0])
-    #loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=model,labels=next_element[1]))
-    loss = weighted_ce(next_element[1],model,.1)
+
+    # abandoned as well:
+    #model = ft_extr.create_lstm_model(next_element[0])
+    model = ft_extr.small_model(next_element[0])
+    #model = ft_extr.create_3dconv_model(next_element[0])
+    
+    #loss = weighted_ce(next_element[1],model,.1)
+    
+    # abandoned approaches
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=model,labels=next_element[1]))
     #loss = sparse_cost_sensitive_loss(model,next_element[1],[[1.,1.],[1.,1.]]) #TODO label to onehot
+    
     prediction = tf.nn.softmax(model)
+    cnf_matrix = tf.math.confusion_matrix(predictions=tf.to_float(tf.argmax(prediction,1)),labels=tf.to_float(tf.argmax(next_element[1], 1)))
     equality = tf.equal(tf.to_float(tf.argmax(prediction,1)), tf.to_float(tf.argmax(next_element[1], 1)))    
     accuracy = tf.reduce_mean(tf.to_float(equality))
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
-        optimizer = tf.train.AdamOptimizer(learning_rate=.005).minimize(loss)
+        optimizer = tf.train.AdamOptimizer(learning_rate=.001).minimize(loss)
       
 
     with tf.Session() as sess:
@@ -125,15 +170,15 @@ if __name__ == '__main__':
 
         for epoch in range(n_epochs):
             ep_loss = []
-            ep_acc = []
+            ep_cnf = []
             for _ in range(int(n_samples/batchsize)):
-                _,b_loss,acc = sess.run([optimizer,loss,accuracy],feed_dict={'is_training:0':True})
+                _,b_loss,cnf_mat = sess.run([optimizer,loss,cnf_matrix],feed_dict={'is_training:0':True})
                 ep_loss.append(b_loss)
-                ep_acc.append(acc)
+                ep_cnf.append(cnf_mat)
 
             print(np.mean(ep_loss))
-            print(np.mean(ep_acc))
-            if(n_epochs%5==0):
+            print(np.mean(ep_cnf,axis=0))
+            if(n_epochs%10==0):
                 save_path = saver.save(sess,data_dir+str(epoch)+"_checkpoint.ckpt")
     
         print('predicting..')
@@ -144,8 +189,6 @@ if __name__ == '__main__':
             while True:
                 pred = sess.run(prediction,feed_dict={'is_training:0':False})
                 result_set.append(pred)
-            
-
         except:
             pass
         # range
@@ -155,7 +198,8 @@ if __name__ == '__main__':
     # save_path = saver.save(sess, "path.ckpt")
     # saver.restore(sess, "path.ckpt")
 
-    result_set = np.squeeze(np.array(result_set))
+    result_set = np.vstack(np.array(result_set))
+    np.savetxt(data_dir+"preds.csv", result_set, delimiter=",")
     print("done")
     
     

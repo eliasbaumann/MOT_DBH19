@@ -11,12 +11,7 @@ class feature_extractor(object):
 
 
     def create_lstm_model(self,data):
-        x = tf.keras.layers.BatchNormalization()(data,training = self.training) # TODO we can also do this on the data     
-        # cell1 = tf.contrib.rnn.ConvLSTMCell(conv_ndims=2,
-        #                                     input_shape=[None,None,3],
-        #                                     output_channels=64,
-        #                                     kernel_shape=3)
-        # x = tf.keras.layers.RNN(cell=cell1,return_sequences=True,dty)(x)#(cell=cell1,inputs=x,dtype=tf.float32)                    
+        x = tf.keras.layers.BatchNormalization()(data,training = self.training) 
         x = tf.keras.layers.ConvLSTM2D(64,kernel_size=(3,3),padding='same',return_sequences=True)(x,training = self.training)
         x = tf.keras.layers.BatchNormalization()(x,training = self.training)
         x = tf.keras.layers.ConvLSTM2D(32,kernel_size=(3,3),padding='same',return_sequences=True)(x,training = self.training)
@@ -25,6 +20,29 @@ class feature_extractor(object):
         x = tf.keras.layers.BatchNormalization()(x,training = self.training)
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
         x = tf.keras.layers.Dense(8)(x)
+        x = tf.keras.layers.Dense(2)(x)
+        return x
+
+    def create_3dconv_model(self,data):
+        x = tf.keras.layers.BatchNormalization()(data,training = self.training) 
+        x = tf.keras.layers.Conv3D(filters=64,kernel_size=3,padding='same')(x)
+        x = tf.keras.layers.BatchNormalization()(x,training = self.training)
+        x = tf.keras.layers.Conv3D(filters=32,kernel_size=3,padding='same')(x)
+        x = tf.keras.layers.BatchNormalization()(x,training = self.training)
+        x = tf.keras.layers.Conv3D(filters=16,kernel_size=3,padding='same')(x)
+        x = tf.keras.layers.BatchNormalization()(x,training = self.training)
+        x = tf.keras.layers.GlobalAveragePooling3D()(x)
+        x = tf.keras.layers.Dense(8)(x)
+        x = tf.keras.layers.Dense(2)(x)
+        return x
+        
+
+    def small_model(self,data):
+        x = tf.keras.layers.BatchNormalization()(data,training = self.training) 
+        x = tf.keras.layers.GlobalAveragePooling3D()(x)
+        x = tf.keras.layers.Dense(256)(x)
+        x = tf.keras.layers.Dense(128)(x)
+        x = tf.keras.layers.Dense(32)(x)
         x = tf.keras.layers.Dense(2)(x)
         return x
 
