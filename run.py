@@ -80,9 +80,19 @@ def generate_seqs(images,data_desc,onehot_lab=True):
         labels = onehot(labels,label_dict={'boat':1,'nature':0})
     return img_seqs,labels
 
-def fourier_transform(data):
+def fourier_transform(data,only_real=True):
     fft_data = np.fft.rfftn(data,axes=(1,2,3))
+    fft_data = (fft_data - np.mean(fft_data))/np.std(fft_data)
+    if(only_real):
+        fft_data = np.real(fft_data)
     return fft_data
+
+def surf_extract(img):
+    #surf = cv2.xfeatures2d.SURF_create(400)
+    #kp, des = surf.detectAndCompute(img, None)
+    return None
+
+
 
 
 if __name__ == '__main__':
@@ -101,10 +111,11 @@ if __name__ == '__main__':
 
     # train_imgs = np.concatenate((train_imgs,additional_train_imgs),axis=0)
     # train_labels = np.concatenate((train_labels,additional_train_labels),axis=0)
-
+    surfer_boy,boys = surf_extract(train_imgs[0,0,:])
     # Fourier transform
     fft_train = fourier_transform(train_imgs)
     # PCA??
+
 
     # Random cnn features
 
