@@ -5,6 +5,9 @@ import cv2
 
 from mpi4py import MPI
 
+from model import feature_extractor
+from utils import sparse_cost_sensitive_loss,onehot
+
 # from feature_extractor import Feature_extractor
 
 
@@ -44,11 +47,12 @@ def load_images(data_dir,resize=None,seq_len=None):
         res_imgs.append(nimg)
 
     images = np.array(res_imgs)
+    
     g_images,labels = generate_seqs(images,data_desc)
-    g_images = tf.keras.preprocessing.sequence.pad_sequences(g_images,maxlen=seq_len)
+    g_images = tf.keras.preprocessing.sequence.pad_sequences(g_images,maxlen=seq_len,dtype='float32')
     return g_images,labels
 
-def generate_seqs(images,data_desc):
+def generate_seqs(images,data_desc,onehot_lab=True):
     idx = []
     runn_idx = 0
     img_seqs = []
@@ -68,7 +72,10 @@ def generate_seqs(images,data_desc):
         else:
             idx.append(row['framenr']-2)
         label = row['class']
+    if(onehot_lab):
+        labels = onehot(labels,label_dict={'boat':1,'nature':0})
     return img_seqs,labels
+
 
 
     
@@ -89,9 +96,52 @@ if __name__ == '__main__':
     test_imgs,test_labels = load_images(test_dir,resize=train_imgs.shape[2],seq_len=train_imgs.shape[1])
     train_dataset = tf.data.Dataset.from_tensor_slices((train_imgs,train_labels))
     test_dataset = tf.data.Dataset.from_tensor_slices((test_imgs,test_labels))
+    n_epochs = 50
+    batchsize = 50
+    n_samples = train_imgs.shape[0]
     
-    saver = tf.train.Saver()
+    train_dataset = train_dataset.shuffle(buffer_size=100,reshuffle_each_iteration=True).batch(batchsize).repeat()
 
+    iterator = train_dataset.make_initializable_iterator()
+    
+    next_element = iterator.get_next()
+
+    ft_extr = feature_extractor(next_element[0])
+    model = ft_extr.create_lstm_model()
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=model,labels=next_element[1]))
+    #loss = sparse_cost_sensitive_loss(model,next_element[1],[[1.,1.],[1.,1.]]) #TODO label to onehot
+    prediction = tf.nn.softmax(model)
+    equality = tf.equal(tf.to_float(tf.argmax(prediction,1)), tf.to_float(tf.argmax(next_element[1], 1)))    
+    accuracy = tf.reduce_mean(tf.to_float(equality))
+
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+        optimizer = tf.train.AdamOptimizer(learning_rate=.005).minimize(loss)
+      
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        sess.run(iterator.initializer)
+        saver = tf.train.Saver()
+
+        for epoch in range(n_epochs):
+            ep_loss = []
+            ep_acc = []
+            for _ in range(int(n_samples/batchsize)):
+                _,b_loss,acc = sess.run([optimizer,loss,accuracy])
+                ep_loss.append(b_loss)
+                ep_acc.append(acc)
+
+            print(np.mean(ep_loss))
+            print(np.mean(ep_acc))
+            if(n_epochs%5==0):
+                save_path = saver.save(sess,data_dir+str(epoch)+"_checkpoint.ckpt")
+    
+
+        # range
+        # sess.run(optimizer,cost)
+    # training is false and true sometimes
+        
     # save_path = saver.save(sess, "path.ckpt")
     # saver.restore(sess, "path.ckpt")
 

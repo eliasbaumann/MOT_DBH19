@@ -6,3 +6,7 @@ MOT/checkpoint/yolov3_coco.ckpt.meta
 MOT/checkpoint/yolov3_coco.tar.gz
 MOT/checkpoint/yolov3_coco_demo.ckpt.data-00000-of-00001
 MOT/checkpoint/yolov3_coco_demo.ckpt.index
+random.py
+__pycache__/utils.cpython-36.pyc
+__pycache__/model.cpython-36.pyc
+__pycache__/random.cpython-36.pyc
