@@ -37,7 +37,7 @@ def load_images(data_dir,resize=None,seq_len=None):
     shapes = []
     for i in data_desc['filename']:
 
-        img_raw = cv2.imread(data_dir+i,0) #cv2.IMREAD_COLOR
+        img_raw = cv2.imread(data_dir+i,1) #cv2.IMREAD_COLOR
         # img_raw = cv2.Laplacian(img_raw,cv2.CV_64F)
         img_raw = cv2.normalize(img_raw, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         
@@ -146,7 +146,7 @@ def train_with_tf(train_imgs,train_labels,test_imgs,test_labels,n_epochs=10,batc
     
     n_samples = train_imgs.shape[0]
     
-    train_dataset = train_dataset.shuffle(buffer_size=100,reshuffle_each_iteration=True).batch(batchsize).repeat().prefetch(50)
+    train_dataset = train_dataset.shuffle(buffer_size=100,reshuffle_each_iteration=True).batch(batchsize,drop_remainder=True).repeat()#.prefetch(50)
     valid_dataset = valid_dataset.batch(batchsize)
     test_dataset = test_dataset.batch(batchsize)
 
@@ -167,7 +167,8 @@ def train_with_tf(train_imgs,train_labels,test_imgs,test_labels,n_epochs=10,batc
     # abandoned approaches
     #loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=model,labels=next_element[1]))
     #loss = sparse_cost_sensitive_loss(model,next_element[1],[[1.,1.],[1.,1.]]) #TODO label to onehot
-    loss = weighted_ce(next_element[1],model,.1)
+    #loss = weighted_ce(next_element[1],model,.1)
+    loss = tf.nn.weighted_cross_entropy_with_logits(tf.cast(next_element[1],tf.float32),model,tf.constant(6000.))
 
     prediction = tf.nn.softmax(model)
     
@@ -233,7 +234,6 @@ def train_with_tf(train_imgs,train_labels,test_imgs,test_labels,n_epochs=10,batc
 
     return encoded_train,encoded_test,result_set
 
-def covert_to_max
 
 if __name__ == '__main__':
     import argparse
@@ -244,23 +244,22 @@ if __name__ == '__main__':
     data_dir = args.__dict__['dir']
     train_dir = data_dir +'train/'
     test_dir = data_dir +'test/'
-    train_imgs,train_labels = load_images(train_dir,resize=4,seq_len=5)
+    train_imgs,train_labels = load_images(train_dir,resize=36,seq_len=5)
     test_imgs,test_labels = load_images(test_dir,resize=train_imgs.shape[2],seq_len=train_imgs.shape[1])
     
    
 
-    encoded_train,encoded_test,result_set = train_with_tf(train_imgs,train_labels,test_imgs,test_labels,50,50)
+    encoded_train,encoded_test,result_set = train_with_tf(train_imgs,train_labels,test_imgs,test_labels,100,50)
 
     # results2 = run_xgb(encoded_train,train_labels,encoded_test,test_labels)
-    print(train_imgs.shape)
-    results2 = run_xgb(np.reshape(train_imgs,(train_imgs.shape[0],-1)),train_labels,np.reshape(test_imgs,(test_imgs.shape[0],-1)),test_labels)
-    results2 = np.array([int(i+.5) for i in results2])
+    #results2 = run_xgb(np.reshape(train_imgs,(train_imgs.shape[0],-1)),train_labels,np.reshape(test_imgs,(test_imgs.shape[0],-1)),test_labels)
+    #results2 = np.array([int(i+.5) for i in results2])
 
-    from time import gmtime, strftime
+    #from time import gmtime, strftime
 
-    np.savetxt(data_dir+"xgb_preds.csv",results2,delimiter=",")
+    #np.savetxt(data_dir+"xgb_preds.csv",results2,delimiter=",")
     
-    # np.savetxt(data_dir+"preds.csv", result_set, delimiter=",")
+    np.savetxt(data_dir+"preds.csv", result_set, delimiter=",")
     print("done")
     
     
