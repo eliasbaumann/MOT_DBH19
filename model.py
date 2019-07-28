@@ -21,7 +21,7 @@ class feature_extractor(object):
         x = tf.keras.layers.GlobalAveragePooling2D()(x)
         x = tf.keras.layers.Dense(8)(x)
         x = tf.keras.layers.Dense(2)(x)
-        return x
+        return x,x
 
     def create_3dconv_model(self,data):
         x = tf.keras.layers.BatchNormalization()(data,training = self.training) 
@@ -31,20 +31,19 @@ class feature_extractor(object):
         x = tf.keras.layers.BatchNormalization()(x,training = self.training)
         x = tf.keras.layers.Conv3D(filters=16,kernel_size=3,padding='same')(x)
         x = tf.keras.layers.BatchNormalization()(x,training = self.training)
-        x = tf.keras.layers.GlobalAveragePooling3D()(x)
-        x = tf.keras.layers.Dense(8)(x)
+        y = tf.keras.layers.GlobalAveragePooling3D()(x)
+        x = tf.keras.layers.Dense(12)(y)
         x = tf.keras.layers.Dense(2)(x)
-        return x
+        return x,y
         
 
     def small_model(self,data):
         x = tf.keras.layers.BatchNormalization()(data,training = self.training) 
         x = tf.keras.layers.GlobalAveragePooling3D()(x)
-        x = tf.keras.layers.Dense(256)(x)
-        x = tf.keras.layers.Dense(128)(x)
-        x = tf.keras.layers.Dense(32)(x)
+        y = tf.keras.layers.Dense(128,activation=tf.nn.leaky_relu)(x)
+        x = tf.keras.layers.Dense(32)(y)
         x = tf.keras.layers.Dense(2)(x)
-        return x
+        return x,y
 
 
     
